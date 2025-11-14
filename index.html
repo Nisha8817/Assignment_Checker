@@ -211,6 +211,13 @@ function logout(){
   - Keeps all data in localStorage for now
   - To integrate a real AI backend: replace callSemanticAI with fetch to server or openai API (do not expose API keys in client)
 */
+fetch("https://assignment-checker.onrender.com/analyze", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({ content: assignmentText })
+})
+.then(res => res.json())
+.then(data => console.log(data))
 
 (() => {
   // --- Utilities ---
