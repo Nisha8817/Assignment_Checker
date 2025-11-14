@@ -2,17 +2,26 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const path = require("path");
 const { OpenAI } = require('openai');
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
+// Serve static site
+app.use(express.static(__dirname));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Endpoint to analyze assignment content
+// AI Analyze Endpoint
 app.post('/analyze', async (req, res) => {
   try {
     const { content } = req.body;
@@ -21,25 +30,15 @@ app.post('/analyze', async (req, res) => {
       return res.status(400).json({ error: 'Content is required' });
     }
 
-    // Example: using Chat Completion to analyze content
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4', // or gpt-3.5-turbo
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an assignment analyzer for students.' },
-        { role: 'user', content: `Analyze this assignment for correctness and plagiarism. Return JSON with keys: correctness, plagiarism_percentage. Content: ${content}` }
+        { role: 'user', content: `Analyze this assignment. ${content}` }
       ]
     });
 
-    const responseText = completion.choices[0].message.content;
-    // Try parsing JSON from AI response
-    let result;
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      result = { correctness: responseText, plagiarism_percentage: 'N/A' };
-    }
-
-    res.json(result);
+    res.json({ result: completion.choices[0].message.content });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'AI analysis failed' });
