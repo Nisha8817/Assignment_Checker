@@ -1,0 +1,4 @@
+node_modules/
+.env
+assignmentanalyzer/.env
+assignmentanalyzer/node_modules/

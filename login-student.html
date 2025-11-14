@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Login</title>
+<style>
+  body {
+    font-family:'Segoe UI';
+    background: linear-gradient(135deg, rgba(245, 245, 255, 0.8), rgba(245, 245, 255, 0.8)), url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80') no-repeat center center fixed;
+    background-size: cover;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    perspective: 1000px;
+  }
+  form {
+    background:white;
+    padding:30px;
+    border-radius:12px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.1);
+    animation: slideIn 1s ease-out;
+    transform-style: preserve-3d;
+    transition: transform 0.3s;
+  }
+  form:hover {
+    transform: rotateX(2deg) rotateY(2deg);
+  }
+  input {
+    display:block;
+    margin:10px 0;
+    padding:10px;
+    width:250px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    transition: transform 0.2s;
+  }
+  input:focus {
+    transform: scale(1.02);
+  }
+  button {
+    background:linear-gradient(135deg,#8A2BE2,#5D3FD3);
+    color:white;
+    border:none;
+    padding:10px 20px;
+    border-radius:8px;
+    cursor:pointer;
+    transition: transform 0.3s, box-shadow 0.3s;
+    transform-style: preserve-3d;
+  }
+  button:hover {
+    transform: scale(1.05) rotateX(5deg);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+  }
+
+  @keyframes slideIn {
+    from { transform: translateY(-50px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <form onsubmit="login(event)">
+    <h2>Student Login</h2>
+    <input id="enrollment" placeholder="Enrollment Number" required>
+    <input id="password" type="password" placeholder="Password" required>
+    <button type="submit">Login</button>
+    <p style="font-size:14px;">New user? <a href="register-student.html">Register</a></p>
+  </form>
+
+<script>
+function login(e){
+  e.preventDefault();
+
+  const students = JSON.parse(localStorage.getItem('students') || '[]');
+  const user = students.find(
+    s => s.enrollment === enrollment.value && s.password === password.value
+  );
+
+  if(!user){ 
+    alert("Invalid credentials"); 
+    return; 
+  }
+
+  // ✅ Save proper data format
+  localStorage.setItem('role','student');
+  localStorage.setItem('user', JSON.stringify({
+    name: user.name,
+    enrollment: user.enrollment,
+    college: user.college,
+    course: user.course,
+    department: user.department
+  }));
+
+  window.location.href = 'index.html';
+}
+</script>
+
+</body>
+</html>

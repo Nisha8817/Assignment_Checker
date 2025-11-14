@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Registration</title>
+<style>
+  body {
+    font-family:'Segoe UI';
+    background: linear-gradient(135deg, rgba(245, 245, 255, 0.8), rgba(245, 245, 255, 0.8)), url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80') no-repeat center center fixed;
+    background-size: cover;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    perspective: 1000px;
+  }
+  form {
+    background:white;
+    padding:30px;
+    border-radius:12px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.1);
+    animation: slideIn 1s ease-out;
+    transform-style: preserve-3d;
+    transition: transform 0.3s;
+  }
+  form:hover {
+    transform: rotateX(2deg) rotateY(2deg);
+  }
+  input, select {
+    display:block;
+    margin:8px 0;
+    padding:10px;
+    width:280px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    transition: transform 0.2s;
+  }
+  input:focus, select:focus {
+    transform: scale(1.02);
+  }
+  button {
+    background:linear-gradient(135deg,#8A2BE2,#5D3FD3);
+    color:white;
+    border:none;
+    padding:10px 20px;
+    border-radius:8px;
+    cursor:pointer;
+    margin-top:10px;
+    transition: transform 0.3s, box-shadow 0.3s;
+    transform-style: preserve-3d;
+  }
+  button:hover {
+    transform: scale(1.05) rotateX(5deg);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+  }
+
+  @keyframes slideIn {
+    from { transform: translateY(-50px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <form onsubmit="register(event)">
+    <h2>Student Registration</h2>
+    <input id="name" placeholder="Full Name" required>
+    <input id="enrollment" placeholder="Enrollment Number" required>
+    <input id="college" placeholder="College Name" required>
+    <input id="course" placeholder="Course (e.g. B.Tech, BCA)" required>
+    <input id="department" placeholder="Department" required>
+    <input id="password" type="password" placeholder="Password" required>
+    <button type="submit">Register</button>
+    <p style="font-size:14px;">Already registered? <a href="login-student.html">Login</a></p>
+  </form>
+
+<script>
+function register(e){
+  e.preventDefault();
+  const data = {
+    name: name.value,
+    enrollment: enrollment.value,
+    college: college.value,
+    course: course.value,
+    department: department.value,
+    password: password.value
+  };
+
+  let students = JSON.parse(localStorage.getItem('students') || '[]');
+  if(students.find(s => s.enrollment === data.enrollment)){
+    alert("Student already registered!");
+    return;
+  }
+
+  students.push(data);
+  localStorage.setItem('students', JSON.stringify(students));
+  alert("Registration successful!");
+  window.location.href = 'login-student.html';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Assignment Collector & Analyzer</title>
+
+  <!-- PDF.js and Mammoth.js (for client-side extraction) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js"></script>
+
+  <style>
+    :root{
+      --primary:#8A2BE2;
+      --secondary:#5D3FD3;
+      --bg:#f5f7fa;
+      --fg:#2D2B2E;
+      --muted:#9a98a3;
+      --border:#e5e4e2;
+      --success:#77DD77;
+      --danger:#FF6961;
+      --highlight: #fff3b0;
+      --match: #ffd7d7;
+    }
+    *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto, Oxygen, sans-serif}
+    body{margin:0;background:linear-gradient(135deg,#f5f7fa 0%, #e4e5f1 100%);color:var(--fg);padding:20px;min-height:100vh}
+    .container{max-width:1100px;margin:0 auto}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px}
+    .logo{font-weight:700;font-size:24px;background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;background-clip:text;color:transparent;display:flex;align-items:center;gap:10px}
+    .search-container{max-width:560px;flex:1;position:relative}
+    .search-input{width:100%;padding:12px 16px;border-radius:12px;border:none;background:rgba(255,255,255,0.9);box-shadow:0 4px 12px rgba(0,0,0,0.05);font-size:15px}
+    .controls{display:flex;gap:10px;align-items:center}
+    .btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;font-weight:600}
+    .btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff}
+    .btn-muted{background:#fff;border:1px solid var(--border)}
+    .main{display:flex;gap:20px;align-items:flex-start}
+    .left{flex:1}
+    .notes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;margin-top:14px}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,0.04);position:relative;overflow:hidden}
+    .card h3{margin:0 0 6px;font-size:16px}
+    .meta{font-size:12px;color:#666;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:8px}
+    .content-preview{font-size:14px;color:#444;line-height:1.4;max-height:160px;overflow:auto;margin-bottom:10px;padding:6px;border-radius:8px}
+    .match-highlight{background:var(--match);padding:0 2px;border-radius:3px}
+    .card-actions{display:flex;gap:8px;align-items:center}
+    .small-btn{padding:7px 10px;border-radius:8px;border:none;cursor:pointer;font-weight:600;background:transparent}
+    .small-btn.ghost{border:1px solid var(--border)}
+    .analysis-area{margin-top:10px;background:#fafafa;border-radius:8px;padding:10px;font-size:13px;color:#333;display:none}
+    .analysis-area.show{display:block}
+    .empty{padding:60px 20px;text-align:center;color:#888}
+    /* Modal */
+    .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);visibility:hidden;opacity:0;transition:all .18s ease}
+    .modal.show{visibility:visible;opacity:1}
+    .modal-content{width:94%;max-width:760px;background:#fff;border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.2);max-height:90vh;overflow:auto}
+    .form-row{display:flex;gap:10px}
+    .form-group{margin-bottom:12px}
+    label{display:block;font-size:13px;margin-bottom:6px;font-weight:600}
+    input[type="text"], select, textarea, input[type="file"]{
+      width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);font-size:14px;background:#fff
+    }
+    textarea{min-height:140px;resize:vertical}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width:700px){.form-grid{grid-template-columns:1fr}.notes-grid{grid-template-columns:1fr}}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:linear-gradient(135deg,var(--secondary),var(--primary));color:#fff;font-size:12px}
+    .muted{color:var(--muted);font-size:13px}
+    .spinner{display:inline-block;width:18px;height:18px;border:3px solid rgba(0,0,0,0.08);border-top-color:var(--primary);border-radius:50%;animation:spin .9s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .status-line{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,0.03);margin-bottom:12px}
+    .progress{height:8px;background:#eee;border-radius:999px;overflow:hidden}
+    .progress > i{display:block;height:8px;background:linear-gradient(90deg,var(--primary),var(--secondary));width:0%}
+    .match-snippet{font-size:13px;background:var(--highlight);padding:6px;border-radius:6px;margin-top:8px}
+    .danger{color:var(--danger);font-weight:700}
+  </style>
+</head>
+<script>
+const role = localStorage.getItem('role');
+const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+if(!role){ window.location.href='home.html'; }
+
+window.addEventListener('DOMContentLoaded', () => {
+  const header = document.querySelector('header');
+  const info = document.createElement('div');
+  info.innerHTML = `
+    <div style="font-size:14px;color:#555;">
+      Logged in as <strong>${user.name || 'Unknown User'}</strong> (${role})
+      <button style="margin-left:10px;padding:4px 8px;border:none;border-radius:6px;background:#eee;cursor:pointer;"
+        onclick="logout()">Logout</button>
+    </div>`;
+  header.appendChild(info);
+});
+function logout(){
+  localStorage.removeItem('role');
+  localStorage.removeItem('user');
+  window.location.href='home.html';
+}
+</script>
+
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">📚 Assignment Collector & Analyzer</div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex:1;justify-content:flex-end">
+        <div class="search-container" style="flex:1;max-width:560px;">
+          <input id="globalSearch" class="search-input" placeholder="Search by title, content, tags, student name, enrollment, dept..." />
+        </div>
+        <div class="controls">
+          <button id="openAddBtn" class="btn btn-primary">+ New Assignment</button>
+          <button id="clearAllBtn" class="btn btn-muted">Clear All</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="left">
+        <div id="statusLine" class="status-line" style="display:none">
+          <div class="spinner" id="statusSpinner"></div>
+          <div id="statusText">Working...</div>
+          <div style="flex:1"><div class="progress"><i id="statusProgress"></i></div></div>
+        </div>
+
+        <div id="assignmentsGrid" class="notes-grid">
+          <!-- cards injected -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Add / Edit Assignment -->
+  <div id="assignmentModal" class="modal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true">
+      <h2 id="modalHeading">Add Assignment</h2>
+
+      <form id="assignmentForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="studentName">Student Name</label>
+            <input id="studentName" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="enrollment">Enrollment Number</label>
+            <input id="enrollment" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="college">College Name</label>
+            <input id="college" type="text" />
+          </div>
+          <div class="form-group">
+            <label for="degree">Degree</label>
+            <select id="degree">
+              <option>B.Tech</option>
+              <option>B.Sc</option>
+              <option>BCA</option>
+              <option>MCA</option>
+              <option>MBA</option>
+              <option>M.Tech</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="department">Department</label>
+            <input id="department" type="text" />
+          </div>
+          <div class="form-group">
+            <label for="tagsInput">Tags (comma separated)</label>
+            <input id="tagsInput" type="text" placeholder="e.g. algorithms, os, lab" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="assignmentFile">Upload File (PDF / DOCX) — optional</label>
+          <input id="assignmentFile" type="file" accept=".pdf,.docx" />
+          <div class="muted" style="margin-top:6px;font-size:13px">If you upload a file, its extracted text will fill the Content field.</div>
+        </div>
+
+        <div class="form-group">
+          <label for="titleInput">Assignment Title</label>
+          <input id="titleInput" type="text" required />
+        </div>
+
+        <div class="form-group">
+          <label for="contentInput">Content / Notes</label>
+          <textarea id="contentInput" required placeholder="Write or upload a file to auto-fill..."></textarea>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
+          <button type="button" id="cancelBtn" class="btn btn-muted">Cancel</button>
+          <button type="submit" id="saveBtn" class="btn btn-primary">Save Assignment</button>
+        </div>
+
+        <input type="hidden" id="editingId" />
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast / Analysis modal -->
+  <div id="toastModal" class="modal" aria-hidden="true">
+    <div class="modal-content" style="max-width:640px">
+      <div id="toastContent"></div>
+      <div style="text-align:right;margin-top:12px">
+        <button id="toastClose" class="btn btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Assignment Collector & Analyzer - Enhanced version
+  - Adds progress UI and highlights matched tokens in plagiarism
+  - Includes a placeholder function `callSemanticAI()` to connect to real AI APIs
+  - Keeps all data in localStorage for now
+  - To integrate a real AI backend: replace callSemanticAI with fetch to server or openai API (do not expose API keys in client)
+*/
+
+(() => {
+  // --- Utilities ---
+  const $ = id => document.getElementById(id);
+  const escapeHtml = (str) => {
+    if (typeof str !== 'string') return str;
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  };
+
+  // storage key
+  const STORAGE_KEY = 'assignments_v1';
+
+  // state
+  let assignments = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+  // DOM elements
+  const assignmentsGrid = $('assignmentsGrid');
+  const openAddBtn = $('openAddBtn');
+  const assignmentModal = $('assignmentModal');
+  const assignmentForm = $('assignmentForm');
+  const cancelBtn = $('cancelBtn');
+  const modalHeading = $('modalHeading');
+  const globalSearch = $('globalSearch');
+  const clearAllBtn = $('clearAllBtn');
+  const toastModal = $('toastModal');
+  const toastContent = $('toastContent');
+  const toastClose = $('toastClose');
+
+  // status UI
+  const statusLine = $('statusLine');
+  const statusText = $('statusText');
+  const statusProgress = $('statusProgress');
+
+  // form inputs
+  const studentName = $('studentName');
+  const enrollment = $('enrollment');
+  const college = $('college');
+  const degree = $('degree');
+  const department = $('department');
+  const tagsInput = $('tagsInput');
+  const assignmentFile = $('assignmentFile');
+  const titleInput = $('titleInput');
+  const contentInput = $('contentInput');
+  const editingId = $('editingId');
+
+  function saveToStorage() { localStorage.setItem(STORAGE_KEY, JSON.stringify(assignments)); }
+  function makeId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+  // --- Status controls ---
+  function showStatus(text, progressPercent = null) {
+    statusLine.style.display = 'flex';
+    statusText.textContent = text;
+    if (progressPercent === null) {
+      statusProgress.style.width = '0%';
+      // animate indeterminate
+      statusProgress.style.transition = 'none';
+      statusProgress.style.width = '40%';
+      setTimeout(()=> statusProgress.style.transition = 'width 400ms ease', 50);
+    } else {
+      statusProgress.style.width = Math.min(100, progressPercent) + '%';
+    }
+  }
+  function hideStatus() { statusLine.style.display = 'none'; statusProgress.style.width = '0%'; }
+
+  // --- File extraction ---
+  async function extractTextFromFile(file, progressCallback) {
+    if (!file) return '';
+    const name = file.name || '';
+    if (name.toLowerCase().endsWith('.docx')) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const result = await mammoth.extractRawText({ arrayBuffer: this.result });
+            resolve(result.value || '');
+          } catch (err) { resolve(''); }
+        };
+        reader.onerror = () => resolve('');
+        reader.onprogress = (e) => {
+          if (e.lengthComputable && progressCallback) progressCallback(Math.round((e.loaded/e.total)*100*0.6)); // upto 60% for extraction
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    } else if (file.type === 'application/pdf' || name.toLowerCase().endsWith('.pdf')) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const typed = new Uint8Array(this.result);
+            const pdf = await pdfjsLib.getDocument(typed).promise;
+            let text = '';
+            for (let i=1;i<=pdf.numPages;i++){
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              text += content.items.map(it => it.str).join(' ') + '\n';
+              if (progressCallback) progressCallback(Math.round((i/pdf.numPages)*60)); // upto 60%
+            }
+            resolve(text);
+          } catch (err) { resolve(''); }
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsArrayBuffer(file);
+      });
+    } else {
+      return '';
+    }
+  }
+
+  // --- Tokenization & similarity (plagiarism) ---
+  function tokenizeForCompare(text) {
+    if (!text) return new Set();
+    const words = text.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+    const stop = new Set(['the','and','a','an','of','in','to','is','are','for','on','with','this','that','it','by','as','be','or','we','our','you']);
+    return new Set(words.filter(w => !stop.has(w) && w.length>2));
+  }
+  function jaccardSimilarity(setA, setB) {
+    if (!setA.size || !setB.size) return 0;
+    let inter = 0;
+    for (const v of setA) if (setB.has(v)) inter++;
+    const union = new Set([...setA, ...setB]).size;
+    return (inter / union) || 0;
+  }
+
+  // find overlapping tokens and snippet
+  function findMatchDetails(targetText, otherText) {
+    const t = (targetText||'').toLowerCase(); const o = (otherText||'').toLowerCase();
+    const targetWords = t.split(/\s+/);
+    const otherSet = tokenizeForCompare(o);
+    // find tokens in order from target that exist in other
+    const matchedTokens = [];
+    for (const w of [...new Set(targetWords)]) {
+      if (otherSet.has(w) && w.length>2) matchedTokens.push(w);
+      if (matchedTokens.length >= 20) break;
+    }
+    // snippet: find first index of a matched token in targetText
+    let snippet = '';
+    if (matchedTokens.length) {
+      const token = matchedTokens[0];
+      const idx = t.indexOf(token);
+      if (idx !== -1) {
+        const start = Math.max(0, idx - 60);
+        snippet = (targetText||'').slice(start, start + 220).replace(/\n+/g,' ');
+        if (start > 0) snippet = '…' + snippet;
+        if (idx + token.length + 60 < (targetText||'').length) snippet = snippet + '…';
+      }
+    }
+    return { matchedTokens, snippet };
+  }
+
+  // --- Analysis heuristics ---
+  const correctnessKeywords = ['introduction','method','methodology','results','conclusion','references','abstract','analysis','discussion','objective','aim'];
+  function runCorrectnessCheck(text) {
+    text = (text || '').toLowerCase();
+    let found = [];
+    correctnessKeywords.forEach(k => { if (text.includes(k)) found.push(k); });
+    const ratio = correctnessKeywords.length ? (found.length / correctnessKeywords.length) : 0;
+    let verdict = 'Insufficient structure detected';
+    if (ratio > 0.6) verdict = 'Likely Correct / Well-structured';
+    else if (ratio > 0.25) verdict = 'Partially structured — needs review';
+    return { foundKeywords: found, score: Math.round(ratio*100), verdict };
+  }
+
+  function runPlagiarismCheck(targetId, text) {
+    const targetTokens = tokenizeForCompare(text);
+    let maxSim = 0; let matchedAssignment = null;
+    for (const a of assignments) {
+      if (a.id === targetId) continue;
+      const tok = tokenizeForCompare(a.content || '');
+      const sim = jaccardSimilarity(targetTokens, tok);
+      if (sim > maxSim) { maxSim = sim; matchedAssignment = a; }
+    }
+    if (!matchedAssignment) return { topMatchId: null, topMatchTitle: null, similarityPercent: 0, matchedTokens: [], snippet: '' };
+    const details = findMatchDetails(text, matchedAssignment.content || '');
+    return { topMatchId: matchedAssignment.id, topMatchTitle: matchedAssignment.title, similarityPercent: +(maxSim*100).toFixed(1), matchedTokens: details.matchedTokens, snippet: details.snippet };
+  }
+
+  function analyzeAssignment(a, progressCallback) {
+    // run with small progress updates
+    if (progressCallback) progressCallback(70);
+    const correctness = runCorrectnessCheck(a.content || '');
+    if (progressCallback) progressCallback(85);
+    const plagiarism = runPlagiarismCheck(a.id, a.content || '');
+    if (progressCallback) progressCallback(100);
+    const keywords = Array.from(tokenizeForCompare(a.content || '')).slice(0,20);
+    return { correctness, plagiarism, keywords, analyzedAt: new Date().toISOString() };
+  }
+
+  // --- Placeholder for external semantic AI call ---
+  // If you later want semantic similarity / grammar checks using OpenAI or other provider,
+  // DO NOT put API keys in client-side code. Instead:
+  // 1) Create a small server endpoint that accepts text and returns similarity/grammar.
+  // 2) The server calls OpenAI or other provider with the API key.
+  // Example placeholder function (does nothing here but shows where to integrate):
+  async function callSemanticAI(sampleText) {
+    /*
+    // Example server call (do on your server, not in client)
+    const resp = await fetch('/api/semantic_analysis', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text: sampleText})
+    });
+    return resp.json();
+    */
+    return { note: 'semanticAI not connected (placeholder)' };
+  }
+
+  // --- Rendering ---
+  function formatAnalysisHTML(analysis) {
+    if (!analysis) return '<div class="muted">Run Analyze to see results</div>';
+    const correctness = analysis.correctness;
+    const plag = analysis.plagiarism;
+    return `
+      <div style="display:flex;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-weight:700">${escapeHtml(correctness.verdict)}</div>
+          <div class="muted">Structure score: ${correctness.score}%</div>
+          <div style="margin-top:6px"><strong>Found:</strong> ${correctness.foundKeywords.length ? escapeHtml(correctness.foundKeywords.join(', ')) : '<span class="muted">None</span>'}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700">Plagiarism</div>
+          <div class="muted">${plag.similarityPercent}%</div>
+          <div style="margin-top:6px" class="muted">Top match: ${plag.topMatchTitle ? escapeHtml(plag.topMatchTitle) : '&#8212;'}</div>
+        </div>
+      </div>
+      ${ plag.matchedTokens && plag.matchedTokens.length ? `<div style="margin-top:8px"><strong>Matched Tokens:</strong> ${escapeHtml(plag.matchedTokens.slice(0,25).join(', '))}</div>` : '' }
+      ${ plag.snippet ? `<div class="match-snippet"><strong>Example match:</strong> ${escapeHtml(plag.snippet)}</div>` : '' }
+      <div class="muted" style="margin-top:6px">Analyzed at: ${new Date(analysis.analyzedAt || '').toLocaleString()}</div>
+    `;
+  }
+
+  function renderAssignments(list = assignments) {
+    const q = globalSearch.value.trim().toLowerCase();
+    const filtered = list.filter(a => {
+      if (!q) return true;
+      const fields = [
+        a.title, a.content, (a.tags||[]).join(' '),
+        a.studentName, a.enrollment, a.college, a.degree, a.department
+      ].map(s => (s||'').toLowerCase()).join(' ');
+      return fields.includes(q);
+    });
+
+    assignmentsGrid.innerHTML = '';
+    if (!filtered.length) {
+      assignmentsGrid.innerHTML = `<div class="empty">No assignments yet. Click "New Assignment" to add one.</div>`;
+      return;
+    }
+
+    for (const a of filtered) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      // highlight matched tokens in preview if analysis exists
+      let previewHtml = escapeHtml((a.content || '').slice(0, 250));
+      if (a.analysis && a.analysis.plagiarism && a.analysis.plagiarism.matchedTokens && a.analysis.plagiarism.matchedTokens.length) {
+        // naive highlighting: wrap matched tokens in span
+        const tokens = a.analysis.plagiarism.matchedTokens.slice(0,40).map(t => t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+        // build regex that matches whole words of tokens (limit length)
+        try {
+          const re = new RegExp('\\b(' + tokens.join('|') + ')\\b','ig');
+          previewHtml = escapeHtml((a.content||'').slice(0, 250)).replace(re, (m)=> `<span class="match-highlight">${m}</span>`);
+        } catch(e) {
+          // fallback: leave previewHtml as-is
+        }
+      }
+
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0">
+            <h3>${escapeHtml(a.title)}</h3>
+            <div class="meta">
+              <strong>${escapeHtml(a.studentName || '—')}</strong>
+              &nbsp;•&nbsp; ${escapeHtml(a.enrollment || '—')}
+              ${ a.college ? '&nbsp;•&nbsp;'+escapeHtml(a.college) : '' }
+              ${ a.department ? '&nbsp;•&nbsp;'+escapeHtml(a.department) : '' }
+              ${ a.degree ? '&nbsp;•&nbsp;<span class="badge">'+escapeHtml(a.degree)+'</span>' : '' }
+            </div>
+          </div>
+          <div style="text-align:right;min-width:120px">
+            <div class="muted" style="font-size:12px">${a.createdAt ? (new Date(a.createdAt)).toLocaleString() : ''}</div>
+            <div style="margin-top:8px;font-size:12px;color:#666">${a.fileName ? escapeHtml(a.fileName) : ''}</div>
+          </div>
+        </div>
+
+        <div class="content-preview" id="preview-${a.id}">${previewHtml}${(a.content||'').length>250 ? '...' : ''}</div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <div style="display:flex;gap:8px" class="card-actions">
+            <button class="small-btn ghost" data-action="analyze" data-id="${a.id}">🔎 Analyze</button>
+            <button class="small-btn ghost" data-action="edit" data-id="${a.id}">✏️ Edit</button>
+            <button class="small-btn ghost" data-action="delete" data-id="${a.id}">🗑️ Delete</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="small-btn ghost" data-action="download" data-id="${a.id}">⬇️ Download</button>
+            <button class="small-btn ghost" data-action="expand" data-id="${a.id}">⤢ View</button>
+          </div>
+        </div>
+
+        <div class="analysis-area ${a.analysis ? 'show' : ''}" id="analysis-${a.id}">
+          ${ a.analysis ? formatAnalysisHTML(a.analysis) : '<div class="muted">Run Analyze to see results</div>' }
+        </div>
+      `;
+      // attach handlers
+      card.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const act = btn.getAttribute('data-action');
+          const id = btn.getAttribute('data-id');
+          if (act === 'analyze') handleAnalyze(id, btn);
+          else if (act === 'edit') openEditModal(id);
+          else if (act === 'delete') handleDelete(id);
+          else if (act === 'download') handleDownload(id);
+          else if (act === 'expand') toggleExpand(id);
+        });
+      });
+
+      assignmentsGrid.appendChild(card);
+    }
+  }
+
+  function toggleExpand(id) {
+    const el = $(`analysis-${id}`);
+    if (!el) return;
+    el.classList.toggle('show');
+  }
+
+  // --- Handlers ---
+  async function handleAnalyze(id, triggerBtn) {
+    const a = assignments.find(x=>x.id===id);
+    if (!a) return;
+    try {
+      showStatus('Analyzing assignment...', 10);
+      // small delay to show progress
+      await new Promise(r=>setTimeout(r,200));
+      const analysis = analyzeAssignment(a, (p)=> showStatus('Analyzing assignment...', p));
+      a.analysis = analysis;
+      saveToStorage();
+      renderAssignments();
+      showToast(`<h3>Analysis — ${escapeHtml(a.title)}</h3>${formatAnalysisHTML(analysis)}`);
+    } catch (err) {
+      console.error(err);
+      showToast(`<div class="danger">Analysis failed: ${escapeHtml((err && err.message) || 'Error')}</div>`);
+    } finally { hideStatus(); }
+  }
+
+  function handleDelete(id) {
+    if (!confirm('Delete this assignment?')) return;
+    assignments = assignments.filter(a=>a.id!==id);
+    saveToStorage();
+    renderAssignments();
+  }
+
+  function handleDownload(id) {
+    const a = assignments.find(x=>x.id===id);
+    if (!a) return;
+    const analysisText = a.analysis ? (
+`Analysis:
+  - Correctness verdict: ${a.analysis.correctness.verdict}
+  - Structure score: ${a.analysis.correctness.score}%
+  - Keywords found: ${a.analysis.correctness.foundKeywords.join(', ') || 'None'}
+  - Plagiarism top match: ${a.analysis.plagiarism.topMatchTitle || '—'} (${a.analysis.plagiarism.similarityPercent}%)
+  - Analyzed at: ${a.analysis.analyzedAt}
+`
+    ) : 'Analysis: Not performed\n';
+
+    const text = `Title: ${a.title}
+Student Name: ${a.studentName}
+Enrollment: ${a.enrollment}
+College: ${a.college}
+Degree: ${a.degree}
+Department: ${a.department}
+Tags: ${(a.tags||[]).join(', ')}
+
+Content:
+${a.content}
+
+File: ${a.fileName || 'No file uploaded'}
+
+${analysisText}
+Saved: ${a.createdAt || ''}
+`;
+    const blob = new Blob([text], {type:'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeTitle = (a.title || 'assignment').replace(/[^a-z0-9]/gi,'_').toLowerCase();
+    link.download = `${safeTitle}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // --- Modal: Add / Edit ---
+  function openAddModal() {
+    modalHeading.textContent = 'Add Assignment';
+    editingId.value = '';
+    studentName.value = '';
+    enrollment.value = '';
+    college.value = '';
+    degree.value = 'B.Tech';
+    department.value = '';
+    tagsInput.value = '';
+    titleInput.value = '';
+    contentInput.value = '';
+    assignmentFile.value = '';
+    showModal(assignmentModal);
+  }
+
+  function openEditModal(id) {
+    const a = assignments.find(x=>x.id===id);
+    if (!a) return;
+    modalHeading.textContent = 'Edit Assignment';
+    editingId.value = a.id;
+    studentName.value = a.studentName || '';
+    enrollment.value = a.enrollment || '';
+    college.value = a.college || '';
+    degree.value = a.degree || 'B.Tech';
+    department.value = a.department || '';
+    tagsInput.value = (a.tags||[]).join(', ');
+    titleInput.value = a.title || '';
+    contentInput.value = a.content || '';
+    assignmentFile.value = '';
+    showModal(assignmentModal);
+  }
+
+  assignmentForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const id = editingId.value || makeId();
+    const file = assignmentFile.files && assignmentFile.files[0];
+    try {
+      if (file) {
+        showStatus('Extracting text from file...', 5);
+      }
+      let extracted = '';
+      if (file) {
+        extracted = await extractTextFromFile(file, (p)=> showStatus('Extracting file...', p));
+      }
+      const newObj = {
+        id,
+        studentName: studentName.value.trim(),
+        enrollment: enrollment.value.trim(),
+        college: college.value.trim(),
+        degree: degree.value,
+        department: department.value.trim(),
+        tags: tagsInput.value.split(',').map(t=>t.trim()).filter(Boolean),
+        title: titleInput.value.trim(),
+        content: (extracted || contentInput.value).trim(),
+        fileName: file ? file.name : null,
+        createdAt: editingId.value ? (assignments.find(a=>a.id===id).createdAt) : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        analysis: editingId.value ? (assignments.find(a=>a.id===id).analysis || null) : null
+      };
+      if (editingId.value) {
+        assignments = assignments.map(a => a.id === id ? newObj : a);
+      } else {
+        assignments.unshift(newObj);
+      }
+      saveToStorage();
+      renderAssignments();
+      hideModal(assignmentModal);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to extract file. Please try again.');
+    } finally { hideStatus(); }
+  });
+
+  cancelBtn.addEventListener('click', () => { hideModal(assignmentModal); });
+
+  // open add
+  openAddBtn.addEventListener('click', openAddModal);
+
+  // clear all
+  clearAllBtn.addEventListener('click', () => {
+    if (!confirm('Clear all assignments? This action cannot be undone.')) return;
+    assignments = [];
+    saveToStorage();
+    renderAssignments();
+  });
+
+  // search with debounce
+  let searchTimer = null;
+  globalSearch.addEventListener('input', () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(()=> renderAssignments(), 220);
+  });
+
+  // modal helpers
+  function showModal(el) {
+    el.classList.add('show');
+    el.setAttribute('aria-hidden','false');
+  }
+  function hideModal(el) {
+    el.classList.remove('show');
+    el.setAttribute('aria-hidden','true');
+  }
+
+  // toast
+  function showToast(html) {
+    toastContent.innerHTML = html;
+    showModal(toastModal);
+  }
+  toastClose.addEventListener('click', () => hideModal(toastModal));
+  toastModal.addEventListener('click', (e) => { if (e.target === toastModal) hideModal(toastModal); });
+
+  // modal close on outside click
+  assignmentModal.addEventListener('click', (e) => { if (e.target === assignmentModal) hideModal(assignmentModal); });
+
+  // init
+  renderAssignments();
+
+  // expose for debugging if needed
+  window._assignments = assignments;
+
+})();
+</script>
+</body>
+</html>
